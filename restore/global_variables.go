@@ -21,15 +21,17 @@ import (
  */
 
 var (
-	backupConfig     *backup_history.BackupConfig
-	connectionPool   *dbconn.DBConn
-	globalCluster    *cluster.Cluster
-	globalFPInfo     backup_filepath.FilePathInfo
-	globalTOC        *utils.TOC
-	pluginConfig     *utils.PluginConfig
-	restoreStartTime string
-	version          string
-	wasTerminated    bool
+	backupConfig        *backup_history.BackupConfig
+	connectionPool      *dbconn.DBConn
+	globalCluster       *cluster.Cluster
+	globalFPInfo        backup_filepath.FilePathInfo
+	globalTOC           *utils.TOC
+	pluginConfig        *utils.PluginConfig
+	restoreStartTime    string
+	version             string
+	wasTerminated       bool
+	errorTablesData     []string
+	errorTablesMetadata []string
 
 	/*
 	 * Used for synchronizing DoCleanup.  In DoInit() we increment the group

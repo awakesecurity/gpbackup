@@ -1276,6 +1276,7 @@ PARTITION BY LIST (gender)
 			assertDataRestored(restoreConn, map[string]int{"public.corrupt_table": 0, "public.good_table1": 10, "public.good_table2": 10})
 
 		})
+
 		It("backup and restore all data when NOT VALID option on constraints is specified", func() {
 			testutils.SkipIfBefore6(backupConn)
 			testhelper.AssertQueryRuns(backupConn, "CREATE TABLE legacy_table_violate_constraints (a int)")
@@ -1300,6 +1301,38 @@ PARTITION BY LIST (gender)
 			Expect(err).To(HaveOccurred())
 
 			assertArtifactsCleaned(restoreConn, timestamp)
+		})
+
+		It(`gprestore logs error tables with --on-error-continue`, func() {
+			command := exec.Command("tar", "-xzf", "resources/corrupt-db.tar.gz", "-C", backupDir)
+			mustRunCommand(command)
+
+			// Restore comm
+			gprestoreCmd := exec.Command(gprestorePath, "--timestamp", "20190809230424", "--redirect-db", "restoredb", "--backup-dir", filepath.Join(backupDir, "corrupt-db"), "--on-error-continue")
+			gprestoreCmd.CombinedOutput()
+			files, _ := filepath.Glob(filepath.Join(backupDir, "/corrupt-db/", "*-1/backups/*", "20190809230424", "*error_tables*"))
+			Expect(files).To(HaveLen(1))
+
+			gprestoreCmd = exec.Command(gprestorePath, "--timestamp", "20190809230424", "--redirect-db", "restoredb", "--backup-dir", filepath.Join(backupDir, "corrupt-db"), "--on-error-continue")
+			output, _ := gprestoreCmd.CombinedOutput()
+			if output != nil {
+				// do nothing
+			}
+			files, _ = filepath.Glob(filepath.Join(backupDir, "/corrupt-db/", "*-1/backups/*", "20190809230424", "*error_tables*"))
+			Expect(files).To(HaveLen(3))
+
+			gprestoreCmd = exec.Command(gprestorePath, "--timestamp", "20190809230424", "--redirect-db", "restoredb", "--backup-dir", filepath.Join(backupDir, "corrupt-db"), "--on-error-continue", "--metadata-only")
+			output, _ = gprestoreCmd.CombinedOutput()
+			if output != nil {
+				// do nothing
+			}
+			files, _ = filepath.Glob(filepath.Join(backupDir, "/corrupt-db/", "*-1/backups/*", "20190809230424", "*error_tables*"))
+			Expect(files).To(HaveLen(3))
+
+			gprestoreCmd = exec.Command(gprestorePath, "--timestamp", "20190809230424", "--redirect-db", "restoredb", "--backup-dir", filepath.Join(backupDir, "corrupt-db"), "--on-error-continue", "--data-only")
+			gprestoreCmd.CombinedOutput()
+			files, _ = filepath.Glob(filepath.Join(backupDir, "/corrupt-db/", "*-1/backups/*", "20190809230424", "*error_tables*"))
+			Expect(files).To(HaveLen(1))
 		})
 	})
 })
