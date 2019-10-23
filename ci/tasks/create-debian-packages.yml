@@ -1,0 +1,111 @@
+PLATFORM: linux
+
+image_resource:
+  type: docker-image
+  source:
+    repository: pivotaldata/gpdb6-ubuntu18.04-build
+    tag: 'latest'
+
+
+inputs:
+- name: github_release_components
+- name: gpdb_src
+- name: bin_gpdb
+
+outputs:
+- name: debian_gppkgs
+
+run:
+  path: bash
+  args:
+    - -c
+    - |
+      set -ex
+      GPBK_VERSION=`cat github_release_components/version`
+      PLATFORM="UbuntuDebian"
+
+
+      ############# MAKES .deb installation files for Ubuntu Debian ##############
+
+
+      echo "[INFO] Building deb installer for gpbackup version: ${GPBK_VERSION}"
+      echo "[INFO] Building for platform: ${PLATFORM}"
+
+
+      #GPBACKUP_GPPKG=gpbackup_tools-${GPBACKUP_VERSION}-gp${GPDB_MAJOR_VERSION}-${OS}-x86_64.gppkg
+
+      __final_deb_name="gp-backup-${GPBK_VERSION}-gp6-${PLATFORM}-amd64.deb"
+      echo "[INFO] Final deb name: ${__final_deb_name}"
+
+      __final_package_name="${__final_deb_name%.*}"
+
+      __path_to_source_archive="github_release_components/gpbackup-${GPBK_VERSION}.tar.gz"
+
+      mkdir -p "deb_build_dir"
+      pushd "deb_build_dir"
+      mkdir -p "${__final_package_name}/DEBIAN/"
+      mkdir -p "${__final_package_name}/usr/share/doc/gpbackup/"
+      DOC_ROOT="${__final_package_name}/usr/share/doc/gpbackup/"
+      cat <<NOTICE_EOF >"${DOC_ROOT}/NOTICE"
+      put notice here
+      NOTICE_EOF
+
+      cat <<EOF >"${__final_package_name}/DEBIAN/control"
+      Package: GreenplumBackup
+      Priority: extra
+      Maintainer: example@pivotal.io
+      Architecture: amd64
+      Version: ${GPBK_VERSION}
+      Provides: Pivotal
+      Description: gpbackup and gprestore are Go utilities for performing Greenplum Database backups.
+      Homepage: https://github.com/greenplum-db/gpbackup
+      EOF
+
+      mkdir -p "${_final_package_name}/usr/local/gpbackup-${GPBK_VERSION}"
+      tar -xf "../${__path_to_source_archive}" -C "${_final_package_name}/usr/local/gpbackup-${GPBK_VERSION}"
+      dpkg-deb --build "${__final_package_name}"
+      popd
+
+      mkdir gpbk_deb_installer
+      cp "deb_build_dir/${__final_package_name}.deb" gpbk_deb_installer/
+
+      __built_deb="gpbk_deb_installer/${__final_deb_name}"
+      openssl dgst -sha256 "${__built_deb}" >"${__built_deb}".sha256 || exit 1
+      echo "[INFO] Final Debian installer: ${__built_deb}"
+      __final_package_name="${__final_deb_name%.*}"
+
+
+
+      ############# MAKES gppkg from .deb ##############
+
+
+      # Install gpdb binaries
+      mv bin_gpdb/{*.tar.gz,bin_gpdb.tar.gz}
+      mkdir -p /usr/local/greenplum-db-devel
+      tar -xzf bin_gpdb/bin_gpdb.tar.gz -C /usr/local/greenplum-db-devel
+
+      source /usr/local/greenplum-db-devel/greenplum_path.sh
+
+      mkdir -p gppkg/
+      mkdir -p gppkg/deps
+
+      cat <<EOF >"gppkg_spec.yml"
+        Pkgname: gpbackup
+        Architecture: amd64
+        OS: ubuntu debian
+        Version: ${GPBK_VERSION}
+        GPDBVersion: TODO-put-the-actual-version-here
+        Description: gpbackup and gprestore are Go utilities for performing Greenplum Database backups.
+      EOF
+      cp gppkg_spec.yml gppkg/
+      cp "deb_build_dir/${__final_package_name}.deb" gppkg/
+      gppkg --build gppkg/
+      echo "Successfully built gppkg"
+
+
+      ########### Prepare to publish output ###########
+
+      mv "gpbackup-${GPBK_VERSION}-ubuntu debian-amd64.gppkg" "gpbackup-${GPBK_VERSION}-ubuntu-debian-amd64.gppkg"
+      tar cvzf gpbackup-gppkgs.tar.gz gpbackup-${GPBK_VERSION}-ubuntu-debian-amd64.gppkg
+
+      mv  gpbackup-gppkgs.tar.gz debian_gppkgs/
