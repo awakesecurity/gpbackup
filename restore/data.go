@@ -143,7 +143,7 @@ func restoreDataFromTimestamp(fpInfo backup_filepath.FilePathInfo, dataEntries [
 						return
 					}
 					mutex.Lock()
-					errorTablesData = append(errorTablesData, tableName)
+					errorTablesData[tableName] = Empty{}
 					mutex.Unlock()
 				}
 

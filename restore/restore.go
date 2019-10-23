@@ -343,7 +343,7 @@ func DoTeardown() {
 }
 
 func writeErrorTables(isMetadata bool) {
-	var errorTables *[]string
+	var errorTables *map[string]Empty
 	var errorFilename string
 
 	if isMetadata == true {
@@ -359,14 +359,16 @@ func writeErrorTables(isMetadata bool) {
 	errorFile, err := os.OpenFile(errorFilename, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	gplog.FatalOnError(err)
 	errorWriter := bufio.NewWriter(errorFile)
-	for i, table := range *errorTables {
-		if(i > 0) {
+	start := true
+	for table, _ := range *errorTables {
+		if start  == false {
 			errorWriter.WriteString("\n")
+		} else {
+			start = false
 		}
 		errorWriter.WriteString(table)
 	}
 	err = errorWriter.Flush()
-	gplog.FatalOnError(err)
 	err = errorFile.Close()
 	gplog.FatalOnError(err)
 	err = operating.System.Chmod(errorFilename, 0444)

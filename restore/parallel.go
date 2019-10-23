@@ -26,7 +26,7 @@ func executeStatementsForConn(statements chan utils.StatementWithType, fatalErr 
 			if MustGetFlagBool(utils.ON_ERROR_CONTINUE) {
 				atomic.AddInt32(numErrors, 1)
 				mutex.Lock()
-				errorTablesMetadata = append(errorTablesMetadata, statement.Schema + "." + statement.Name)
+				errorTablesMetadata[statement.Schema + "." + statement.Name] = Empty{}
 				mutex.Unlock()
 			} else {
 				*fatalErr = err
