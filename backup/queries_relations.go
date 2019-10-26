@@ -279,11 +279,14 @@ AND %s;`, relationAndSchemaFilterClause())
 }
 
 type View struct {
-	Oid        uint32
-	Schema     string
-	Name       string
-	Options    string
-	Definition string
+	Oid            uint32
+	Schema         string
+	Name           string
+	Options        string
+	Definition     string
+	StorageOpts    string
+	Tablespace     string
+	IsMaterialized bool
 }
 
 func (v View) GetMetadataEntry() (string, utils.MetadataEntry) {
@@ -306,24 +309,100 @@ func (v View) FQN() string {
 	return utils.MakeFQN(v.Schema, v.Name)
 }
 
+// This function retrieves both regular views and material views. Material
+// views was introduced in GPDB 6.1
 func GetViews(connectionPool *dbconn.DBConn) []View {
-	results := make([]View, 0)
-	optionsStr := ""
+	selectClause := `
+	SELECT
+	c.oid AS oid,
+	quote_ident(n.nspname) AS schema,
+	quote_ident(c.relname) AS name,
+	pg_get_viewdef(c.oid) AS definition,`
 	if connectionPool.Version.AtLeast("6") {
-		optionsStr = "coalesce(' WITH (' || array_to_string(c.reloptions, ', ') || ')', '') AS options,"
+		selectClause += `
+		coalesce(' WITH (' || array_to_string(c.reloptions, ', ') || ')', '') AS options,`
 	}
+	if connectionPool.Version.AtLeast("6.1") {
+		selectClause += `
+		coalesce(quote_ident(t.spcname), '') AS tablespace,
+		coalesce(array_to_string(c.reloptions, ', '), '') AS storageopts,
+		c.relkind='m' AS ismaterialized`
+	}
+
+	fromClause := `
+	FROM pg_class c
+	LEFT JOIN pg_namespace n ON n.oid = c.relnamespace`
+	if connectionPool.Version.AtLeast("6.1") {
+		fromClause += `
+		LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace`
+	}
+
+	var whereClause string
+	if connectionPool.Version.Before("6.1") {
+		fromClause += `
+		WHERE c.relkind = 'v'::"char"`
+	}
+	if connectionPool.Version.AtLeast("6.1") {
+		fromClause += `
+		WHERE c.relkind IN ('m', 'v')`
+	}
+	whereClause += fmt.Sprintf(`
+	AND %s
+	AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
+
+	results := make([]View, 0)
+	query := selectClause + fromClause + whereClause
+	err := connectionPool.Select(&results, query)
+	gplog.FatalOnError(err)
+
+	return results
+}
+
+type MaterializedView struct {
+	Oid         uint32
+	Schema      string
+	Name        string
+	StorageOpts string
+	Tablespace  string
+	Definition  string
+}
+
+func (v MaterializedView) GetMetadataEntry() (string, utils.MetadataEntry) {
+	return "predata",
+		utils.MetadataEntry{
+			Schema:          v.Schema,
+			Name:            v.Name,
+			ObjectType:      "VIEW",
+			ReferenceObject: "",
+			StartByte:       0,
+			EndByte:         0,
+		}
+}
+
+func (v MaterializedView) GetUniqueID() UniqueID {
+	return UniqueID{ClassID: PG_CLASS_OID, Oid: v.Oid}
+}
+
+func (v MaterializedView) FQN() string {
+	return utils.MakeFQN(v.Schema, v.Name)
+}
+
+func GetMaterializedViews(connectionPool *dbconn.DBConn) []View {
+	results := make([]MaterializedView, 0)
 	query := fmt.Sprintf(`
 SELECT
 	c.oid AS oid,
 	quote_ident(n.nspname) AS schema,
 	quote_ident(c.relname) AS name,
-	%s
+	quote_ident(t.spcname) AS tablespace,
+	array_to_string(c.reloptions, ', ') AS storageopts,
 	pg_get_viewdef(c.oid) AS definition
 FROM pg_class c
 LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE c.relkind = 'v'::"char"
+LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+WHERE c.relkind = 'm'::"char"
 AND %s
-AND %s;`, optionsStr, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
+AND %s;`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 	err := connectionPool.Select(&results, query)
 	gplog.FatalOnError(err)
 	return results
