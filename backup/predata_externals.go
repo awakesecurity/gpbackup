@@ -234,13 +234,15 @@ func GenerateFormatStatement(extTableDef ExternalTableDefinition) string {
 		formatType = "AVRO"
 	case "p":
 		formatType = "PARQUET"
+	case "x":
+		formatType = "awake_parquet"
 	}
 	formatStatement += fmt.Sprintf("FORMAT '%s'", formatType)
 
 	if extTableDef.FormatOpts != "" {
 		formatTokens := tokenizeAndEscapeFormatOpts(strings.TrimSpace(extTableDef.FormatOpts))
 		formatOptsString := ""
-		if formatType == "TEXT" || formatType == "CSV" {
+		if formatType == "TEXT" || formatType == "CSV" || formatType == "awake_parquet" {
 			formatOptsString = strings.Join(formatTokens, " ")
 		} else {
 			formatOptsString = makeCustomFormatOpts(formatTokens)
